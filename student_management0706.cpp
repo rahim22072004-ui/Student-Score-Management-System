@@ -1,279 +1,292 @@
-#include "stdio.h"
-#include "malloc.h"
-#include "string.h"
-#include "stdlib.h"
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <cstdlib>
+#include <iomanip>
+#include <string>
+using namespace std;
 
-typedef struct studentStru
-{
-    int id;                 // id number
+// Define status
+#define OK 1
+#define ERROR 0
+#define TRUE 1
+#define FALSE 0
+typedef int Status;
+
+// Student structure definition
+typedef struct studentStru {
+    int id;                 // student number
     char name[30];          // name
-    float score[3];         // score
-    struct studentStru *next;
+    float score[3];         // scores (3 courses)
+    struct studentStru* next; // pointer to next node
 } StudentNode, *StudentLink;
 
-typedef struct STUStru
-{
-    StudentLink Head;
-    StudentLink Tail;
-    int count;
+// Linked list header structure
+typedef struct STUStru {
+    StudentLink Head;       // pointer to header
+    StudentLink Tail;       // pointer to tail
+    int count;              // number of records
 } STU;
 
-StudentLink *IdIndex;       // student ID index array
-StudentLink *NameIndex;     // name index array
+// Global variables
+STU stu;                    // student list
+StudentLink* IdIndex;       // student ID index array
+StudentLink* NameIndex;     // name index array
 int indexCount = 0;         // number of indexed records
 
 // Function prototypes
-void CreateStudentLink(STU &stu1);
-void InsertStudent(STU &stu1, StudentNode SNode);
-void funInsertStudent(STU &stu1);
-void PrintStudentInfo(STU stu1);
+void InitList();
+void DestroyList();
+Status LoadFromFile(const char* filename);
+Status SaveToFile(const char* filename);
+Status AddStudent(int id, const char* name, float s1, float s2, float s3);
+Status DeleteStudent(int id);
+Status ModifyName(int id, const char* newName);
+Status ModifyScore(int id, int courseIndex, float newScore);
+StudentLink FindStudent(int id);
+bool CheckDuplicateID(int id);
+void DisplayAll();
 void DisplayStudent(StudentLink p);
-void funModifyStudent(STU &stu1);
-void funDeleteStudent(STU &stu1);
-void funModifyName(STU &stu1);
-void funModifyScore(STU &stu1);
-StudentLink FindStudentById(STU stu1, int id);
-void funSearchStudent(STU stu1);
-void CreateIndex(STU stu1);
+void CreateIndex();
 void SortIndexById();
 void SortIndexByName();
 int BinarySearchById(int id);
-void DisplayByIdOrder(STU stu1);
-void DisplayByNameOrder(STU stu1);
-void SaveToFile(STU stu1);
-void LoadFromFile(STU &stu1);
-void DestroyList(STU &stu1);
+void DisplayByIdOrder();
+void DisplayByNameOrder();
+void ShowMenu();
 void ClearInput();
 
+// Password functions
+bool passwordFileExists();
+void savePassword(const string& password);
+string loadPassword();
+string getPasswordInput();
+void setupPassword();
+bool verifyPassword();
+
 // Initialize linked list
-void CreateStudentLink(STU &stu1)
-{
-    stu1.Head = (StudentLink)malloc(sizeof(StudentNode));
-    stu1.Head->next = NULL;
-    stu1.Tail = stu1.Head;
-    stu1.count = 0;
+void InitList() {
+    stu.Head = new StudentNode;
+    stu.Head->next = NULL;
+    stu.Tail = stu.Head;
+    stu.count = 0;
     IdIndex = NULL;
     NameIndex = NULL;
     indexCount = 0;
 }
 
 // Destroy linked list and free memory
-void DestroyList(STU &stu1)
-{
-    StudentLink p = stu1.Head;
-    while (p)
-    {
+void DestroyList() {
+    StudentLink p = stu.Head;
+    while (p) {
         StudentLink q = p->next;
-        free(p);
+        delete p;
         p = q;
     }
-    stu1.Head = NULL;
-    stu1.Tail = NULL;
-    stu1.count = 0;
+    stu.Head = NULL;
+    stu.Tail = NULL;
+    stu.count = 0;
     
-    if (IdIndex)
-    {
-        free(IdIndex);
+    if (IdIndex) {
+        delete[] IdIndex;
         IdIndex = NULL;
     }
-    if (NameIndex)
-    {
-        free(NameIndex);
+    if (NameIndex) {
+        delete[] NameIndex;
         NameIndex = NULL;
     }
     indexCount = 0;
 }
 
-// Insert a student record
-void InsertStudent(STU &stu1, StudentNode SNode)
-{
-    StudentLink p;
-    p = (StudentLink)malloc(sizeof(StudentNode));
-    memcpy(p, &SNode, sizeof(StudentNode));
-    p->next = NULL;
-    stu1.Tail->next = p;
-    stu1.Tail = p;
-    stu1.count++;
-    
-    // Invalidate index
-    if (IdIndex)
-    {
-        free(IdIndex);
-        IdIndex = NULL;
+// Check if ID already exists
+bool CheckDuplicateID(int id) {
+    StudentLink p = stu.Head->next;
+    while (p) {
+        if (p->id == id) {
+            return true;
+        }
+        p = p->next;
     }
-    if (NameIndex)
-    {
-        free(NameIndex);
-        NameIndex = NULL;
-    }
-    indexCount = 0;
+    return false;
 }
 
-// Insert student information (menu 2 sub-function)
-void funInsertStudent(STU &stu1)
-{
-    StudentNode SNode;
-    printf("Please input id number, name, and score (id number = -1 for quit):\n");
-    scanf("%d %s %f", &SNode.id, SNode.name, &SNode.score[0]);
-    SNode.score[1] = 0;
-    SNode.score[2] = 0;
-    
-    while (SNode.id != -1)
-    {
-        // Check if ID already exists
-        if (FindStudentById(stu1, SNode.id))
-        {
-            printf("Student ID %d already exists!\n", SNode.id);
-        }
-        else
-        {
-            InsertStudent(stu1, SNode);
-            printf("Student added successfully.\n");
-        }
-        printf("Please input id number, name, and score (id number = -1 for quit):\n");
-        scanf("%d %s %f", &SNode.id, SNode.name, &SNode.score[0]);
-        SNode.score[1] = 0;
-        SNode.score[2] = 0;
+// Read student information from file
+Status LoadFromFile(const char* filename) {
+    ifstream file(filename);
+    if (!file.is_open()) {
+        cout << "Cannot open file: " << filename << endl;
+        return ERROR;
     }
+    
+    int count;
+    file >> count;
+    if (file.fail()) {
+        cout << "File format error!" << endl;
+        file.close();
+        return ERROR;
+    }
+    
+    // Clear current list
+    DestroyList();
+    InitList();
+    
+    for (int i = 0; i < count; i++) {
+        int id;
+        char name[30];
+        float s1, s2, s3;
+        file >> id >> name >> s1 >> s2 >> s3;
+        if (file.fail()) {
+            cout << "Error reading record " << i + 1 << endl;
+            file.close();
+            return ERROR;
+        }
+        AddStudent(id, name, s1, s2, s3);
+    }
+    
+    file.close();
+    cout << "Successfully loaded " << count << " student records." << endl;
+    return OK;
 }
 
-// Delete student by ID
-void funDeleteStudent(STU &stu1)
-{
-    int id;
-    printf("Enter student ID to delete: ");
-    scanf("%d", &id);
+// Save student information to file
+Status SaveToFile(const char* filename) {
+    ofstream file(filename);
+    if (!file.is_open()) {
+        cout << "Cannot create file: " << filename << endl;
+        return ERROR;
+    }
     
-    StudentLink p = stu1.Head;
-    while (p->next && p->next->id != id)
-    {
+    file << stu.count << endl;
+    
+    StudentLink p = stu.Head->next;
+    while (p) {
+        file << p->id << " " << p->name << " " 
+             << p->score[0] << " " << p->score[1] << " " << p->score[2] << endl;
         p = p->next;
     }
     
-    if (!p->next)
-    {
-        printf("Student ID %d not found!\n", id);
-        return;
+    file.close();
+    cout << "Successfully saved " << stu.count << " student records." << endl;
+    return OK;
+}
+
+// Add a new student
+Status AddStudent(int id, const char* name, float s1, float s2, float s3) {
+    // Check if ID already exists
+    if (CheckDuplicateID(id)) {
+        cout << "\n|======================================================|" << endl;
+        cout <<   "|| ERROR: ID " << id << " already exists in the system!||" << endl;
+        cout <<   "|| Your ID number is same as previous.                 ||" << endl;
+        cout <<   "|| Please assign a new ID number                       ||" << endl;
+        cout <<   "|=======================================================|" << endl << endl;
+        return ERROR;
+    }
+    
+    StudentLink newNode = new StudentNode;
+    newNode->id = id;
+    strcpy(newNode->name, name);
+    newNode->score[0] = s1;
+    newNode->score[1] = s2;
+    newNode->score[2] = s3;
+    newNode->next = NULL;
+    
+    stu.Tail->next = newNode;
+    stu.Tail = newNode;
+    stu.count++;
+    
+    // Invalidate index
+    if (IdIndex) {
+        delete[] IdIndex;
+        IdIndex = NULL;
+    }
+    if (NameIndex) {
+        delete[] NameIndex;
+        NameIndex = NULL;
+    }
+    indexCount = 0;
+    
+    return OK;
+}
+
+// Delete student by ID
+Status DeleteStudent(int id) {
+    StudentLink p = stu.Head;
+    while (p->next && p->next->id != id) {
+        p = p->next;
+    }
+    
+    if (!p->next) {
+        cout << "Student ID " << id << " not found!" << endl;
+        return ERROR;
     }
     
     StudentLink q = p->next;
     p->next = q->next;
-    if (q == stu1.Tail)
-    {
-        stu1.Tail = p;
+    if (q == stu.Tail) {
+        stu.Tail = p;
     }
-    free(q);
-    stu1.count--;
+    delete q;
+    stu.count--;
     
     // Invalidate index
-    if (IdIndex)
-    {
-        free(IdIndex);
+    if (IdIndex) {
+        delete[] IdIndex;
         IdIndex = NULL;
     }
-    if (NameIndex)
-    {
-        free(NameIndex);
+    if (NameIndex) {
+        delete[] NameIndex;
         NameIndex = NULL;
     }
     indexCount = 0;
     
-    printf("Student ID %d deleted successfully.\n", id);
+    cout << "Student ID " << id << " deleted successfully." << endl;
+    return OK;
 }
 
 // Modify student name
-void funModifyName(STU &stu1)
-{
-    int id;
-    char newName[30];
-    printf("Enter student ID: ");
-    scanf("%d", &id);
-    
-    StudentLink p = FindStudentById(stu1, id);
-    if (!p)
-    {
-        printf("Student ID %d not found!\n", id);
-        return;
+Status ModifyName(int id, const char* newName) {
+    StudentLink p = FindStudent(id);
+    if (!p) {
+        cout << "Student ID " << id << " not found!" << endl;
+        return ERROR;
     }
     
-    printf("Enter new name: ");
-    scanf("%s", newName);
     strcpy(p->name, newName);
-    printf("Name updated successfully.\n");
+    cout << "Name updated successfully." << endl;
     
-    // Invalidate name index only
-    if (NameIndex)
-    {
-        free(NameIndex);
+    // Invalidate name index only (id index still valid)
+    if (NameIndex) {
+        delete[] NameIndex;
         NameIndex = NULL;
     }
     indexCount = 0;
+    
+    return OK;
 }
 
 // Modify student score
-void funModifyScore(STU &stu1)
-{
-    int id, course;
-    float newScore;
-    printf("Enter student ID: ");
-    scanf("%d", &id);
-    
-    StudentLink p = FindStudentById(stu1, id);
-    if (!p)
-    {
-        printf("Student ID %d not found!\n", id);
-        return;
+Status ModifyScore(int id, int courseIndex, float newScore) {
+    if (courseIndex < 0 || courseIndex > 2) {
+        cout << "Invalid course index! Use 0, 1, or 2." << endl;
+        return ERROR;
     }
     
-    printf("Enter course index (0, 1, or 2): ");
-    scanf("%d", &course);
-    if (course < 0 || course > 2)
-    {
-        printf("Invalid course index! Use 0, 1, or 2.\n");
-        return;
+    StudentLink p = FindStudent(id);
+    if (!p) {
+        cout << "Student ID " << id << " not found!" << endl;
+        return ERROR;
     }
     
-    printf("Enter new score: ");
-    scanf("%f", &newScore);
-    p->score[course] = newScore;
-    printf("Score updated successfully.\n");
-}
-
-// Modify menu
-void funModifyStudent(STU &stu1)
-{
-    int choice;
-    while (1)
-    {
-        printf("\n------- Modify Menu -------\n");
-        printf("1. Add new student\n");
-        printf("2. Delete student\n");
-        printf("3. Modify student name\n");
-        printf("4. Modify student score\n");
-        printf("5. Back to main menu\n");
-        printf("Enter your choice: ");
-        scanf("%d", &choice);
-        
-        switch (choice)
-        {
-            case 1: funInsertStudent(stu1); break;
-            case 2: funDeleteStudent(stu1); break;
-            case 3: funModifyName(stu1); break;
-            case 4: funModifyScore(stu1); break;
-            case 5: return;
-            default: printf("Invalid choice.\n");
-        }
-    }
+    p->score[courseIndex] = newScore;
+    cout << "Score updated successfully." << endl;
+    return OK;
 }
 
 // Find student by ID
-StudentLink FindStudentById(STU stu1, int id)
-{
-    StudentLink p = stu1.Head->next;
-    while (p)
-    {
-        if (p->id == id)
-        {
+StudentLink FindStudent(int id) {
+    StudentLink p = stu.Head->next;
+    while (p) {
+        if (p->id == id) {
             return p;
         }
         p = p->next;
@@ -281,127 +294,59 @@ StudentLink FindStudentById(STU stu1, int id)
     return NULL;
 }
 
-// Display a single student
-void DisplayStudent(StudentLink p)
-{
-    printf("ID:%-8d Name:%-15s Score1:%-6.1f Score2:%-6.1f Score3:%-6.1f\n",
-           p->id, p->name, p->score[0], p->score[1], p->score[2]);
-}
-
-// Search student information
-void funSearchStudent(STU stu1)
-{
-    int choice;
-    while (1)
-    {
-        printf("\n------- Search Menu -------\n");
-        printf("1. Search by ID\n");
-        printf("2. Search by name\n");
-        printf("3. Back to main menu\n");
-        printf("Enter your choice: ");
-        scanf("%d", &choice);
-        
-        if (choice == 3) return;
-        
-        switch (choice)
-        {
-            case 1:
-            {
-                int id;
-                printf("Enter student ID: ");
-                scanf("%d", &id);
-                StudentLink p = FindStudentById(stu1, id);
-                if (p)
-                {
-                    printf("Found: ");
-                    DisplayStudent(p);
-                }
-                else
-                {
-                    printf("Student ID %d not found.\n", id);
-                }
-                break;
-            }
-            case 2:
-            {
-                char name[30];
-                int found = 0;
-                printf("Enter name: ");
-                scanf("%s", name);
-                StudentLink p = stu1.Head->next;
-                while (p)
-                {
-                    if (strcmp(p->name, name) == 0)
-                    {
-                        DisplayStudent(p);
-                        found = 1;
-                    }
-                    p = p->next;
-                }
-                if (!found)
-                {
-                    printf("No student found with name: %s\n", name);
-                }
-                break;
-            }
-            default:
-                printf("Invalid choice.\n");
-        }
-    }
-}
-
-// Print all student information
-void PrintStudentInfo(STU stu1)
-{
-    if (stu1.count == 0)
-    {
-        printf("No student records.\n");
+// Display all students
+void DisplayAll() {
+    if (stu.count == 0) {
+        cout << "No student records." << endl;
         return;
     }
     
-    StudentLink s;
-    s = stu1.Head->next;
-    printf("//////////////////////////////////////////////////////////\n");
-    printf("ID        Name            Score1  Score2  Score3\n");
-    printf("----------------------------------------------------------\n");
-    while (s != NULL)
-    {
-        printf("%-8d   %-15s %-6.1f  %-6.1f  %-6.1f\n", 
-               s->id, s->name, s->score[0], s->score[1], s->score[2]);
-        s = s->next;
+    cout << "\n//////////////////////////////////////////////////////////" << endl;
+    cout << setw(10) << "ID" << setw(20) << "Name" 
+         << setw(10) << "Score1" << setw(10) << "Score2" << setw(10) << "Score3" << endl;
+    cout << "----------------------------------------------------------" << endl;
+    
+    StudentLink p = stu.Head->next;
+    while (p) {
+        DisplayStudent(p);
+        p = p->next;
     }
-    printf("//////////////////////////////////////////////////////////\n");
-    printf("Total: %d students.\n", stu1.count);
+    cout << "//////////////////////////////////////////////////////////" << endl;
+    cout << "Total: " << stu.count << " students." << endl;
+}
+
+// Display a single student
+void DisplayStudent(StudentLink p) {
+    cout << setw(10) << p->id 
+         << setw(20) << p->name 
+         << setw(10) << fixed << setprecision(1) << p->score[0]
+         << setw(10) << p->score[1]
+         << setw(10) << p->score[2] << endl;
 }
 
 // Create index by ID and name
-void CreateIndex(STU stu1)
-{
-    if (stu1.count == 0)
-    {
-        printf("No student records to index.\n");
+void CreateIndex() {
+    if (stu.count == 0) {
+        cout << "No student records to index." << endl;
         return;
     }
     
     // Free old indices
-    if (IdIndex)
-    {
-        free(IdIndex);
+    if (IdIndex) {
+        delete[] IdIndex;
         IdIndex = NULL;
     }
-    if (NameIndex)
-    {
-        free(NameIndex);
+    if (NameIndex) {
+        delete[] NameIndex;
         NameIndex = NULL;
     }
     
-    indexCount = stu1.count;
-    IdIndex = (StudentLink*)malloc(indexCount * sizeof(StudentLink));
-    NameIndex = (StudentLink*)malloc(indexCount * sizeof(StudentLink));
+    indexCount = stu.count;
+    IdIndex = new StudentLink[indexCount];
+    NameIndex = new StudentLink[indexCount];
     
-    StudentLink p = stu1.Head->next;
-    for (int i = 0; i < indexCount && p; i++)
-    {
+    StudentLink p = stu.Head->next;
+    for (int i = 0; i < indexCount && p; i++) {
         IdIndex[i] = p;
         NameIndex[i] = p;
         p = p->next;
@@ -412,18 +357,14 @@ void CreateIndex(STU stu1)
     // Sort Name index
     SortIndexByName();
     
-    printf("Index created successfully with %d records.\n", indexCount);
+    cout << "Index created successfully with " << indexCount << " records." << endl;
 }
 
 // Sort ID index in ascending order (bubble sort)
-void SortIndexById()
-{
-    for (int i = 0; i < indexCount - 1; i++)
-    {
-        for (int j = 0; j < indexCount - 1 - i; j++)
-        {
-            if (IdIndex[j]->id > IdIndex[j + 1]->id)
-            {
+void SortIndexById() {
+    for (int i = 0; i < indexCount - 1; i++) {
+        for (int j = 0; j < indexCount - 1 - i; j++) {
+            if (IdIndex[j]->id > IdIndex[j + 1]->id) {
                 StudentLink temp = IdIndex[j];
                 IdIndex[j] = IdIndex[j + 1];
                 IdIndex[j + 1] = temp;
@@ -433,14 +374,10 @@ void SortIndexById()
 }
 
 // Sort Name index in ascending order (bubble sort)
-void SortIndexByName()
-{
-    for (int i = 0; i < indexCount - 1; i++)
-    {
-        for (int j = 0; j < indexCount - 1 - i; j++)
-        {
-            if (strcmp(NameIndex[j]->name, NameIndex[j + 1]->name) > 0)
-            {
+void SortIndexByName() {
+    for (int i = 0; i < indexCount - 1; i++) {
+        for (int j = 0; j < indexCount - 1 - i; j++) {
+            if (strcmp(NameIndex[j]->name, NameIndex[j + 1]->name) > 0) {
                 StudentLink temp = NameIndex[j];
                 NameIndex[j] = NameIndex[j + 1];
                 NameIndex[j + 1] = temp;
@@ -450,232 +387,493 @@ void SortIndexByName()
 }
 
 // Binary search for student ID on the ID index
-int BinarySearchById(int id)
-{
-    if (!IdIndex || indexCount == 0)
-    {
-        printf("Please create index first (option 5).\n");
+int BinarySearchById(int id) {
+    if (!IdIndex || indexCount == 0) {
+        cout << "Please create index first (option 5)." << endl;
         return -1;
     }
     
     int low = 0, high = indexCount - 1;
     int step = 0;
     
-    while (low <= high)
-    {
+    while (low <= high) {
         step++;
         int mid = (low + high) / 2;
-        printf("Step %d: low=%d, high=%d, mid=%d, IdIndex[%d]->id=%d\n", 
-               step, low, high, mid, mid, IdIndex[mid]->id);
+        cout << "Step " << step << ": low=" << low << ", high=" << high 
+             << ", mid=" << mid << ", IdIndex[" << mid << "]->id=" << IdIndex[mid]->id << endl;
         
-        if (id == IdIndex[mid]->id)
-        {
-            printf("Found at index position %d (step %d)\n", mid, step);
+        if (id == IdIndex[mid]->id) {
+            cout << "Found at index position " << mid << " (step " << step << ")" << endl;
             return mid;
         }
-        else if (id < IdIndex[mid]->id)
-        {
+        else if (id < IdIndex[mid]->id) {
             high = mid - 1;
         }
-        else
-        {
+        else {
             low = mid + 1;
         }
     }
     
-    printf("Student ID %d not found. (steps: %d)\n", id, step);
+    cout << "Student ID " << id << " not found. (steps: " << step << ")" << endl;
     return -1;
 }
 
 // Display student information in ascending order of ID (using index)
-void DisplayByIdOrder(STU stu1)
-{
-    if (!IdIndex || indexCount == 0)
-    {
-        printf("Please create index first (option 5).\n");
+void DisplayByIdOrder() {
+    if (!IdIndex || indexCount == 0) {
+        cout << "Please create index first (option 5)." << endl;
         return;
     }
     
-    printf("\n========== Students sorted by ID (using index) ==========\n");
-    printf("ID        Name            Score1  Score2  Score3\n");
-    printf("----------------------------------------------------------\n");
+    cout << "\n========== Students sorted by ID (using index) ==========" << endl;
+    cout << setw(10) << "ID" << setw(20) << "Name" 
+         << setw(10) << "Score1" << setw(10) << "Score2" << setw(10) << "Score3" << endl;
+    cout << "----------------------------------------------------------" << endl;
     
-    for (int i = 0; i < indexCount; i++)
-    {
-        printf("%-8d   %-15s %-6.1f  %-6.1f  %-6.1f\n",
-               IdIndex[i]->id, IdIndex[i]->name, 
-               IdIndex[i]->score[0], IdIndex[i]->score[1], IdIndex[i]->score[2]);
+    for (int i = 0; i < indexCount; i++) {
+        DisplayStudent(IdIndex[i]);
     }
-    printf("==========================================================\n");
+    cout << "==========================================================" << endl;
 }
 
 // Display student information in ascending order of name (using index)
-void DisplayByNameOrder(STU stu1)
-{
-    if (!NameIndex || indexCount == 0)
-    {
-        printf("Please create index first (option 5).\n");
+void DisplayByNameOrder() {
+    if (!NameIndex || indexCount == 0) {
+        cout << "Please create index first (option 5)." << endl;
         return;
     }
     
-    printf("\n========== Students sorted by Name (using index) ==========\n");
-    printf("ID        Name            Score1  Score2  Score3\n");
-    printf("----------------------------------------------------------\n");
+    cout << "\n========== Students sorted by Name (using index) ==========" << endl;
+    cout << setw(10) << "ID" << setw(20) << "Name" 
+         << setw(10) << "Score1" << setw(10) << "Score2" << setw(10) << "Score3" << endl;
+    cout << "----------------------------------------------------------" << endl;
     
-    for (int i = 0; i < indexCount; i++)
-    {
-        printf("%-8d   %-15s %-6.1f  %-6.1f  %-6.1f\n",
-               NameIndex[i]->id, NameIndex[i]->name,
-               NameIndex[i]->score[0], NameIndex[i]->score[1], NameIndex[i]->score[2]);
+    for (int i = 0; i < indexCount; i++) {
+        DisplayStudent(NameIndex[i]);
     }
-    printf("==========================================================\n");
+    cout << "==========================================================" << endl;
 }
 
-// Save student information to file
-void SaveToFile(STU stu1)
-{
-    char filename[100];
-    printf("Enter filename (default: students.txt): ");
-    scanf("%s", filename);
-    if (strlen(filename) == 0)
-    {
-        strcpy(filename, "students.txt");
+// Function to add a single student with proper input handling
+void AddSingleStudent() {
+    int id;
+    char name[30];
+    float s1, s2, s3;
+    
+    cout << "\n=== ADD NEW STUDENT ===" << endl;
+    cout << "(Enter ID = -1 to go back)" << endl << endl;
+    
+    while (true) {
+        cout << "Enter ID: ";
+        cin >> id;
+        
+        if (cin.fail()) {
+            ClearInput();
+            cout << "Invalid input! Please enter a number." << endl;
+            continue;
+        }
+        
+        if (id == -1) {
+            cout << "\nGoing back to modify menu..." << endl << endl;
+            return;
+        }
+        
+        // Check for duplicate ID
+        if (CheckDuplicateID(id)) {
+            cout << "\n╔══════════════════════════════════════════════════╗" << endl;
+            cout << "║  ERROR: ID " << id << " already exists in the system!     ║" << endl;
+            cout << "║  Your ID number is same as previous.            ║" << endl;
+            cout << "║  Please assign a new ID number.                 ║" << endl;
+            cout << "╚══════════════════════════════════════════════════╝" << endl << endl;
+            continue;  // Ask for ID again
+        }
+        
+        cout << "Enter Name: ";
+        cin >> name;
+        
+        cout << "Enter Score 1 (0-100): ";
+        cin >> s1;
+        cout << "Enter Score 2 (0-100): ";
+        cin >> s2;
+        cout << "Enter Score 3 (0-100): ";
+        cin >> s3;
+        
+        if (AddStudent(id, name, s1, s2, s3) == OK) {
+            cout << "\n✓ Student added successfully!" << endl;
+            cout << "  ID: " << id << ", Name: " << name 
+                 << ", Scores: " << s1 << ", " << s2 << ", " << s3 << endl << endl;
+        }
+        // After successful addition, continue loop to add more students
+        cout << "Enter ID for next student (or -1 to go back):" << endl;
     }
-    
-    FILE *fp = fopen(filename, "w");
-    if (!fp)
-    {
-        printf("Cannot create file: %s\n", filename);
-        return;
-    }
-    
-    fprintf(fp, "%d\n", stu1.count);
-    
-    StudentLink p = stu1.Head->next;
-    while (p)
-    {
-        fprintf(fp, "%d %s %.1f %.1f %.1f\n", 
-                p->id, p->name, p->score[0], p->score[1], p->score[2]);
-        p = p->next;
-    }
-    
-    fclose(fp);
-    printf("Successfully saved %d student records to %s.\n", stu1.count, filename);
 }
 
-// Read student information from file
-void LoadFromFile(STU &stu1)
-{
-    char filename[100];
-    printf("Enter filename (default: students.txt): ");
-    scanf("%s", filename);
-    if (strlen(filename) == 0)
-    {
-        strcpy(filename, "students.txt");
+// Submenu for insert/modify/delete
+void SubMenuModify() {
+    int choice;
+    while (true) {
+        cout << "\n------- Modify Menu -------" << endl;
+        cout << "1. Add new student" << endl;
+        cout << "2. Delete student (by ID)" << endl;
+        cout << "3. Modify student name" << endl;
+        cout << "4. Modify student score" << endl;
+        cout << "5. Back to main menu" << endl;
+        cout << "Enter your choice: ";
+        cin >> choice;
+        
+        if (cin.fail()) {
+            ClearInput();
+            cout << "Invalid input. Please enter a number." << endl;
+            continue;
+        }
+        
+        switch (choice) {
+            case 1:
+                AddSingleStudent();
+                break;
+            case 2: {
+                int id;
+                cout << "Enter student ID to delete: ";
+                cin >> id;
+                DeleteStudent(id);
+                break;
+            }
+            case 3: {
+                int id;
+                char newName[30];
+                cout << "Enter student ID: ";
+                cin >> id;
+                cout << "Enter new name: ";
+                cin >> newName;
+                ModifyName(id, newName);
+                break;
+            }
+            case 4: {
+                int id, course;
+                float newScore;
+                cout << "Enter student ID: ";
+                cin >> id;
+                cout << "Enter course index (0, 1, or 2): ";
+                cin >> course;
+                cout << "Enter new score: ";
+                cin >> newScore;
+                ModifyScore(id, course, newScore);
+                break;
+            }
+            case 5:
+                return;
+            default:
+                cout << "Invalid choice. Please enter 1-5." << endl;
+        }
     }
-    
-    FILE *fp = fopen(filename, "r");
-    if (!fp)
-    {
-        printf("Cannot open file: %s\n", filename);
-        return;
+}
+
+// Submenu for search
+void SubMenuSearch() {
+    int choice;
+    while (true) {
+        cout << "\n------- Search Menu -------" << endl;
+        cout << "1. Search by ID (linear search)" << endl;
+        cout << "2. Search by name" << endl;
+        cout << "3. Back to main menu" << endl;
+        cout << "Enter your choice: ";
+        cin >> choice;
+        
+        if (cin.fail()) {
+            ClearInput();
+            cout << "Invalid input." << endl;
+            continue;
+        }
+        
+        if (choice == 3) break;
+        
+        switch (choice) {
+            case 1: {
+                int id;
+                cout << "Enter student ID to search: ";
+                cin >> id;
+                StudentLink p = FindStudent(id);
+                if (p) {
+                    cout << "Found: ";
+                    DisplayStudent(p);
+                } else {
+                    cout << "Student ID " << id << " not found." << endl;
+                }
+                break;
+            }
+            case 2: {
+                char name[30];
+                bool found = false;
+                cout << "Enter name to search: ";
+                cin >> name;
+                StudentLink p = stu.Head->next;
+                while (p) {
+                    if (strcmp(p->name, name) == 0) {
+                        DisplayStudent(p);
+                        found = true;
+                    }
+                    p = p->next;
+                }
+                if (!found) {
+                    cout << "No student found with name: " << name << endl;
+                }
+                break;
+            }
+            default:
+                cout << "Invalid choice." << endl;
+        }
     }
-    
-    int count;
-    fscanf(fp, "%d", &count);
-    if (count <= 0)
-    {
-        printf("No records in file.\n");
-        fclose(fp);
-        return;
-    }
-    
-    // Clear current list
-    DestroyList(stu1);
-    CreateStudentLink(stu1);
-    
-    for (int i = 0; i < count; i++)
-    {
-        StudentNode SNode;
-        fscanf(fp, "%d %s %f %f %f", &SNode.id, SNode.name, 
-               &SNode.score[0], &SNode.score[1], &SNode.score[2]);
-        InsertStudent(stu1, SNode);
-    }
-    
-    fclose(fp);
-    printf("Successfully loaded %d student records from %s.\n", stu1.count, filename);
+}
+
+// Show main menu
+void ShowMenu() {
+    cout << "\n========================================" << endl;
+    cout << "   Student Score Management System" << endl;
+    cout << "========================================" << endl;
+    cout << " 0: Load student information from a file" << endl;
+    cout << " 1: Read student information file" << endl;
+    cout << " 2: Insert, modify, or delete student information" << endl;
+    cout << " 3: Display student information" << endl;
+    cout << " 4: Search student information" << endl;
+    cout << " 5: Create index by ID and name" << endl;
+    cout << " 6: Binary search for student ID on the ID index" << endl;
+    cout << " 7: Display students by ID (ascending)" << endl;
+    cout << " 8: Display students by Name (ascending)" << endl;
+    cout << " 9: Save information" << endl;
+    cout << "10: Quit" << endl;
+    cout << "========================================" << endl;
+    cout << "Enter your choice: ";
 }
 
 // Clear input buffer
-void ClearInput()
-{
-    while (getchar() != '\n');
+void ClearInput() {
+    cin.clear();
+    cin.ignore(10000, '\n');
+}
+
+// ============ FIXED PASSWORD FUNCTIONS ============
+
+// Simple password input (no hidden characters - cross platform)
+string getPasswordInput() {
+    string password;
+    cout << "Enter password: ";
+    cin >> password;
+    return password;
+}
+
+// Check if password file exists
+bool passwordFileExists() {
+    ifstream file("password.txt");
+    return file.good();
+}
+
+// Save password to file
+void savePassword(const string& password) {
+    ofstream file("password.txt");
+    if (file.is_open()) {
+        file << password;
+        file.close();
+        cout << "\n✓ Password set successfully!" << endl;
+    } else {
+        cout << "✗ Error: Could not save password!" << endl;
+    }
+}
+
+// Load password from file
+string loadPassword() {
+    string password;
+    ifstream file("password.txt");
+    if (file.is_open()) {
+        getline(file, password);
+        file.close();
+    }
+    return password;
+}
+
+// Main password setup function (FIXED - no infinite recursion)
+void setupPassword() {
+    string newPassword, confirmPassword;
+    int attempts = 3;
+    
+    cout << "\n===== PASSWORD SETUP =====" << endl;
+    cout << "Set a new password for the system.\n" << endl;
+    
+    while (attempts > 0) {
+        cout << "Enter new password: ";
+        cin >> newPassword;
+        
+        if (newPassword.empty()) {
+            cout << "✗ Password cannot be empty!" << endl;
+            attempts--;
+            continue;
+        }
+        
+        cout << "Confirm password: ";
+        cin >> confirmPassword;
+        
+        if (newPassword == confirmPassword) {
+            savePassword(newPassword);
+            return;
+        } else {
+            attempts--;
+            cout << "✗ Passwords do not match! Attempts left: " << attempts << endl;
+        }
+    }
+    
+    cout << "\n✗ Too many failed attempts! Password setup failed." << endl;
+    cout << "Please run the program again to set password." << endl;
+    exit(0);
+}
+
+// Verify password (FIXED - proper loop)
+bool verifyPassword() {
+    string storedPassword = loadPassword();
+    
+    if (storedPassword.empty()) {
+        cout << "\n✗ No password set. Please set a password first." << endl;
+        return false;
+    }
+    
+    int attempts = 3;
+    string inputPassword;
+    
+    while (attempts > 0) {
+        cout << "\nEnter password (Attempts left: " << attempts << "): ";
+        cin >> inputPassword;
+        
+        if (inputPassword == storedPassword) {
+            cout << "\n✓ Password correct! Access granted." << endl;
+            return true;
+        } else {
+            attempts--;
+            if (attempts > 0) {
+                cout << "✗ Incorrect password! Please try again." << endl;
+            }
+        }
+    }
+    
+    cout << "\n✗ Too many failed attempts! Access denied." << endl;
+    return false;
 }
 
 // Main function
-int main()
-{
-    int flag = 1;
-    int sel;
-    STU stu1;
-    CreateStudentLink(stu1);
+int main() {
+    cout << "========================================" << endl;
+    cout << "   Student Score Management System" << endl;
+    cout << "========================================" << endl;
     
-    printf("Welcome to Student Score Management System!\n");
+    // Check if password file exists
+    if (!passwordFileExists()) {
+        cout << "\nFirst time setup required!" << endl;
+        setupPassword();
+    }
     
-    while (flag)
-    {
-        printf("====================================\n");
-		printf("0: load student information from a file\n");
-        printf("1: Read student information file\n");
-        printf("2: Insert, modify, or delete student information\n");
-        printf("3: Display student information\n");
-        printf("4: Search student information\n");
-        printf("5: Create index by ID and name\n");
-        printf("6: Binary search for student ID on the ID index\n");
-        printf("7: Display students by ID (ascending)\n");
-        printf("8: Display students by Name (ascending)\n");
-        printf("9: Save information\n");
-        printf("10: Quit\n");
-        printf("====================================\n");
-        printf("Enter your choice: ");
-        scanf("%d", &sel);
+    // Verify password
+    if (!verifyPassword()) {
+        cout << "\nProgram terminated." << endl;
+        return 0;
+    }
+    
+    // Your main program code goes here
+    cout << "\nWelcome to the system!" << endl;
+    cout << "Your main program starts here..." << endl;
+
+    InitList();
+    int choice;
+    char filename[100];
+    
+    cout << "\nDefault data file: students.txt" << endl;
+    
+    while (true) {
+        ShowMenu();
+        cin >> choice;
         
-        switch (sel)
-        {
-            case 1: LoadFromFile(stu1); break;
-            case 2: funModifyStudent(stu1); break;
-            case 3: PrintStudentInfo(stu1); break;
-            case 4: funSearchStudent(stu1); break;
-            case 5: CreateIndex(stu1); break;
-            case 6:
-            {
-                if (!IdIndex || indexCount == 0)
-                {
-                    printf("Please create index first (option 5).\n");
+        if (cin.fail()) {
+            ClearInput();
+            cout << "Invalid input. Please enter a number." << endl;
+            continue;
+        }
+        
+        switch (choice) {
+            case 0:
+            case 1: {
+                cout << "Enter filename (default: students.txt): ";
+                cin >> filename;
+                if (strlen(filename) == 0) {
+                    strcpy(filename, "students.txt");
+                }
+                LoadFromFile(filename);
+                break;
+            }
+            
+            case 2: {
+                SubMenuModify();
+                break;
+            }
+            
+            case 3: {
+                DisplayAll();
+                break;
+            }
+            
+            case 4: {
+                SubMenuSearch();
+                break;
+            }
+            
+            case 5: {
+                CreateIndex();
+                break;
+            }
+            
+            case 6: {
+                if (!IdIndex || indexCount == 0) {
+                    cout << "Please create index first (option 5)." << endl;
                     break;
                 }
                 int id;
-                printf("Enter student ID to binary search: ");
-                scanf("%d", &id);
+                cout << "Enter student ID to binary search: ";
+                cin >> id;
                 int pos = BinarySearchById(id);
-                if (pos >= 0)
-                {
-                    printf("Record: ");
+                if (pos >= 0) {
+                    cout << "Record: ";
                     DisplayStudent(IdIndex[pos]);
                 }
                 break;
             }
-            case 7: DisplayByIdOrder(stu1); break;
-            case 8: DisplayByNameOrder(stu1); break;
-            case 9: SaveToFile(stu1); break;
-            case 10: 
-                flag = 0;
-                printf("Goodbye!\n");
-                DestroyList(stu1);
+            
+            case 7: {
+                DisplayByIdOrder();
                 break;
-            default:
-                printf("Invalid choice. Please enter 1-10.\n");
+            }
+            
+            case 8: {
+                DisplayByNameOrder();
+                break;
+            }
+            
+            case 9: {
+                cout << "Enter filename (default: students.txt): ";
+                cin >> filename;
+                if (strlen(filename) == 0) {
+                    strcpy(filename, "students.txt");
+                }
+                SaveToFile(filename);
+                break;
+            }
+            
+            case 10: {
+                cout << "Goodbye!" << endl;
+                DestroyList();
+                return 0;
+            }
+            
+            default: {
+                cout << "Invalid choice. Please enter 0-10." << endl;
+                break;
+            }
         }
     }
+    
     return 0;
 }
