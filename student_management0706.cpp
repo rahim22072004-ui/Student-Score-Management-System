@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <string>
+#include <conio.h>  // For _getch() on Windows
 using namespace std;
 
 // Define status
@@ -60,7 +61,7 @@ void ClearInput();
 bool passwordFileExists();
 void savePassword(const string& password);
 string loadPassword();
-string getPasswordInput();
+string getPasswordInput(bool showPassword);
 void setupPassword();
 bool verifyPassword();
 
@@ -651,14 +652,62 @@ void ClearInput() {
     cin.ignore(10000, '\n');
 }
 
-// ============ FIXED PASSWORD FUNCTIONS ============
+// ============ PASSWORD FUNCTIONS WITH SHOW/HIDE OPTION ============
 
-// Simple password input (no hidden characters - cross platform)
-string getPasswordInput() {
+// Function to get password with show/hide option
+string getPasswordInput(bool showPassword) {
     string password;
-    cout << "Enter password: ";
-    cin >> password;
-    return password;
+    char ch;
+    
+    if (showPassword) {
+        // Show password mode - characters are visible
+        cout << "Enter password: ";
+        cin >> password;
+        return password;
+    } else {
+        // Hide password mode - show asterisks
+        cout << "Enter password: ";
+        
+        #ifdef _WIN32
+            // Windows version with _getch()
+            while (true) {
+                ch = _getch();
+                
+                if (ch == 13) { // Enter key
+                    cout << endl;
+                    break;
+                }
+                else if (ch == 8) { // Backspace
+                    if (!password.empty()) {
+                        password.pop_back();
+                        cout << "\b \b"; // Remove last asterisk
+                    }
+                }
+                else if (ch == 27) { // Escape key - cancel
+                    cout << endl;
+                    return "";
+                }
+                else if (ch >= 32 && ch <= 126) { // Printable characters
+                    password += ch;
+                    cout << '*';
+                }
+            }
+        #else
+            // Linux/macOS version - disable echo
+            struct termios oldt, newt;
+            tcgetattr(STDIN_FILENO, &oldt);
+            newt = oldt;
+            newt.c_lflag &= ~ECHO;
+            tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+            
+            getline(cin, password);
+            
+            tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+            cout << endl;
+        #endif
+        
+        return password;
+    }
 }
 
 // Check if password file exists
@@ -690,17 +739,38 @@ string loadPassword() {
     return password;
 }
 
-// Main password setup function (FIXED - no infinite recursion)
+// Show password input mode selection
+int selectPasswordMode() {
+    int choice;
+    cout << "\n----- Password Input Mode -----" << endl;
+    cout << "1. Show Password (visible while typing)" << endl;
+    cout << "2. Hide Password (show **** while typing)" << endl;
+    cout << "Select mode (1 or 2): ";
+    cin >> choice;
+    
+    while (choice != 1 && choice != 2) {
+        cout << "Invalid choice! Please select 1 or 2: ";
+        cin >> choice;
+    }
+    
+    return choice;
+}
+
+// Main password setup function
 void setupPassword() {
     string newPassword, confirmPassword;
     int attempts = 3;
+    int mode;
     
     cout << "\n===== PASSWORD SETUP =====" << endl;
     cout << "Set a new password for the system.\n" << endl;
     
+    // Select password mode
+    mode = selectPasswordMode();
+    bool showPassword = (mode == 1);
+    
     while (attempts > 0) {
-        cout << "Enter new password: ";
-        cin >> newPassword;
+        newPassword = getPasswordInput(showPassword);
         
         if (newPassword.empty()) {
             cout << "✗ Password cannot be empty!" << endl;
@@ -709,9 +779,9 @@ void setupPassword() {
         }
         
         cout << "Confirm password: ";
-        cin >> confirmPassword;
+        string confirm = getPasswordInput(showPassword);
         
-        if (newPassword == confirmPassword) {
+        if (newPassword == confirm) {
             savePassword(newPassword);
             return;
         } else {
@@ -725,7 +795,7 @@ void setupPassword() {
     exit(0);
 }
 
-// Verify password (FIXED - proper loop)
+// Verify password
 bool verifyPassword() {
     string storedPassword = loadPassword();
     
@@ -736,10 +806,15 @@ bool verifyPassword() {
     
     int attempts = 3;
     string inputPassword;
+    int mode;
+    
+    // Select password mode
+    mode = selectPasswordMode();
+    bool showPassword = (mode == 1);
     
     while (attempts > 0) {
-        cout << "\nEnter password (Attempts left: " << attempts << "): ";
-        cin >> inputPassword;
+        cout << "\nAttempts left: " << attempts << endl;
+        inputPassword = getPasswordInput(showPassword);
         
         if (inputPassword == storedPassword) {
             cout << "\n✓ Password correct! Access granted." << endl;
